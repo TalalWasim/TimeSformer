@@ -1,10 +1,11 @@
 TRAIN:
-  ENABLE: False
-  DATASET: kinetics
-  BATCH_SIZE: 8
+  ENABLE: True
+  DATASET: ucf101
+  BATCH_SIZE: 256
   EVAL_PERIOD: 5
   CHECKPOINT_PERIOD: 5
   AUTO_RESUME: True
+  LINEAR: True
 DATA:
   PATH_TO_DATA_DIR: /path/to/kinetics/
   NUM_FRAMES: 8
@@ -16,31 +17,30 @@ DATA:
 TIMESFORMER:
   ATTENTION_TYPE: 'divided_space_time'
 SOLVER:
-  BASE_LR: 0.005
-  LR_POLICY: steps_with_relative_lrs
+  BASE_LR: 0.008
+  LR_POLICY: cosine
   STEPS: [0, 11, 14]
   LRS: [1, 0.1, 0.01]
-  MAX_EPOCH: 15
+  MAX_EPOCH: 20
   MOMENTUM: 0.9
   WEIGHT_DECAY: 1e-4
   OPTIMIZING_METHOD: sgd
 MODEL:
   MODEL_NAME: vit_base_patch16_224
-  NUM_CLASSES: 400
+  NUM_CLASSES: 101
   ARCH: vit
   LOSS_FUNC: cross_entropy
   DROPOUT_RATE: 0.5
 TEST:
   ENABLE: True
-  DATASET: kinetics
-  BATCH_SIZE: 8
+  DATASET: ucf101
+  BATCH_SIZE: 256
   NUM_ENSEMBLE_VIEWS: 1
   NUM_SPATIAL_CROPS: 3
-  CHECKPOINT_FILE_PATH: '/checkpoint/gedas/jobs/timesformer/kinetics_400/TimeSformer_divST_8x32_224/checkpoints/checkpoint_epoch_00025.pyth'
 DATA_LOADER:
-  NUM_WORKERS: 8
+  NUM_WORKERS: 6
   PIN_MEMORY: True
-NUM_GPUS: 8
+NUM_GPUS: 16
 NUM_SHARDS: 1
 RNG_SEED: 0
 OUTPUT_DIR: .

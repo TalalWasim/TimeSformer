@@ -21,6 +21,7 @@ def get_video_container(path_to_vid, multi_thread_decode=False, backend="pyav"):
     elif backend == "pyav":
         #try:
         container = av.open(path_to_vid)
+        # print('yo: ', container)
         if multi_thread_decode:
             # Enable multiple threads for decoding.
             container.streams.video[0].thread_type = "AUTO"

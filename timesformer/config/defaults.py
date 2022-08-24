@@ -74,6 +74,9 @@ _C.TRAIN.CHECKPOINT_EPOCH_RESET = False
 # If set, clear all layer names according to the pattern provided.
 _C.TRAIN.CHECKPOINT_CLEAR_NAME_PATTERN = ()  # ("backbone.",)
 
+# Linear Eval
+_C.TRAIN.LINEAR = False
+
 # ---------------------------------------------------------------------------- #
 # Testing options
 # ---------------------------------------------------------------------------- #
@@ -280,7 +283,7 @@ _C.DATA = CfgNode()
 _C.DATA.PATH_TO_DATA_DIR = ""
 
 # The separator used between path and label.
-_C.DATA.PATH_LABEL_SEPARATOR = " "
+_C.DATA.PATH_LABEL_SEPARATOR = ","
 
 # Video path prefix if any.
 _C.DATA.PATH_PREFIX = ""

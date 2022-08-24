@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=linear_eval_dino
+#SBATCH --job-name=linear_eval_local
 #SBATCH --partition=multigpu
 #SBATCH --time=168:00:00
 #SBATCH --nodes=1
@@ -13,7 +13,7 @@ PROJECT_PATH="./"
 DATA_PATH="../datasets/ucf101/annotations_svt"
 DATASET="ucf101"
 
-EXP_NAME="svt_dino_30_converted.pth"
+EXP_NAME="svt_masked_30_separate_local_mae_vmae_converted.pth"
 CHECKPOINT="../pretrained/$EXP_NAME"
 
 cd "$PROJECT_PATH" || exit
@@ -25,5 +25,4 @@ TEST.BATCH_SIZE 256 \
 DATA.PATH_TO_DATA_DIR $DATA_PATH \
 TRAIN.CHECKPOINT_FILE_PATH $CHECKPOINT \
 TRAIN.FINETUNE True \
-OUTPUT_DIR './results/svt_dino_30_linear_ucf101'
-
+OUTPUT_DIR './results/svt_masked_30_separate_local_mae_vmae_linear_ucf101'

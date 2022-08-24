@@ -24,7 +24,7 @@ def make_checkpoint_dir(path_to_job):
     Args:
         path_to_job (string): the path to the folder of the current job.
     """
-    checkpoint_dir = os.path.join(path_to_job, "checkpoints")
+    checkpoint_dir = os.path.join(path_to_job, "results")
     # Create the checkpoint dir from the master process
     if du.is_master_proc() and not PathManager.exists(checkpoint_dir):
         try:
@@ -40,7 +40,7 @@ def get_checkpoint_dir(path_to_job):
     Args:
         path_to_job (string): the path to the folder of the current job.
     """
-    return os.path.join(path_to_job, "checkpoints")
+    return os.path.join(path_to_job, "results")
 
 
 def get_path_to_checkpoint(path_to_job, epoch):

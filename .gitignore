@@ -1,7 +1,3 @@
-
-
-
-
 # Docker file from Python is inspired from here :
 # https://github.com/github/gitignore/blob/master/Python.gitignore
 
@@ -9,6 +5,8 @@
 __pycache__/
 *.py[cod]
 *$py.class
+slurm-*
+results/
 
 # C extensions
 *.so

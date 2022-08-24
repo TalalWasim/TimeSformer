@@ -22,29 +22,37 @@ def construct_optimizer(model, cfg):
         cfg (config): configs of hyper-parameters of SGD or ADAM, includes base
         learning rate,  momentum, weight_decay, dampening, and etc.
     """
-    # Batchnorm parameters.
-    bn_params = []
-    # Non-batchnorm parameters.
-    non_bn_parameters = []
-    for name, p in model.named_parameters():
-        if "bn" in name:
-            bn_params.append(p)
-        else:
-            non_bn_parameters.append(p)
-    # Apply different weight decay to Batchnorm and non-batchnorm parameters.
-    # In Caffe2 classification codebase the weight decay for batchnorm is 0.0.
-    # Having a different weight decay on batchnorm might cause a performance
-    # drop.
-    optim_params = [
-        {"params": bn_params, "weight_decay": cfg.BN.WEIGHT_DECAY},
-        {"params": non_bn_parameters, "weight_decay": cfg.SOLVER.WEIGHT_DECAY},
-    ]
-    # Check all parameters will be passed into optimizer.
-    assert len(list(model.parameters())) == len(non_bn_parameters) + len(
-        bn_params
-    ), "parameter size does not match: {} + {} != {}".format(
-        len(non_bn_parameters), len(bn_params), len(list(model.parameters()))
-    )
+    if cfg.TRAIN.LINEAR:
+        params = []
+        
+        for name, p in model.named_parameters():
+            if "head" in name:
+                params.append(p)
+        
+        optim_params = [
+            {"params": params, "weight_decay": cfg.SOLVER.WEIGHT_DECAY}
+        ]
+    else:        
+        # Batchnorm parameters.
+        bn_params = []
+        # Non-batchnorm parameters.
+        non_bn_parameters = []
+        for name, p in model.named_parameters():
+            if "bn" in name:
+                bn_params.append(p)
+            else:
+                non_bn_parameters.append(p)
+        # Apply different weight decay to Batchnorm and non-batchnorm parameters.
+        # In Caffe2 classification codebase the weight decay for batchnorm is 0.0.
+        # Having a different weight decay on batchnorm might cause a performance
+        # drop.
+        optim_params = [
+            {"params": bn_params, "weight_decay": cfg.BN.WEIGHT_DECAY},
+            {"params": non_bn_parameters, "weight_decay": cfg.SOLVER.WEIGHT_DECAY},
+        ]
+        # Check all parameters will be passed into optimizer.
+        assert len(list(model.parameters())) == len(non_bn_parameters) + len(bn_params), "parameter size does not match: {} + {} != {}".format(len(non_bn_parameters), len(bn_params), len(list(model.parameters())))
+
 
     if cfg.SOLVER.OPTIMIZING_METHOD == "sgd":
         return torch.optim.SGD(

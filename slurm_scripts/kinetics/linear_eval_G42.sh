@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=linear_eval_videomae_s0
+#SBATCH --job-name=linear_eval_masked
 #SBATCH --partition=multigpu
 #SBATCH --time=168:00:00
 #SBATCH --nodes=1
@@ -10,10 +10,10 @@
 
 
 PROJECT_PATH="./"
-DATA_PATH="../datasets/kinetics-dataset/k400_resized/annotations_svt"
+DATA_PATH="../datasets/kinetics-dataset/k400_resized_2/annotations_svt"
 DATASET="kinetics"
 
-EXP_NAME="svt_videomae_30_slice_0_converted.pth"
+EXP_NAME="svt_masked_30_separate_local_mae_vmae_converted.pth"
 CHECKPOINT="../pretrained/$EXP_NAME"
 
 cd "$PROJECT_PATH" || exit
@@ -25,5 +25,5 @@ TEST.BATCH_SIZE 256 \
 DATA.PATH_TO_DATA_DIR $DATA_PATH \
 TRAIN.CHECKPOINT_FILE_PATH $CHECKPOINT \
 TRAIN.FINETUNE True \
-OUTPUT_DIR './results/svt_videomae_30_slice_0_linear'
+OUTPUT_DIR './results/svt_masked_30_separate_local_mae_vmae_linear_kinetics'
 

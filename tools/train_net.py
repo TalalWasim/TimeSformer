@@ -111,7 +111,8 @@ def train_epoch(
             loss.backward()
             if (cur_iter + 1) % num_iters == 0:
                 for p in model.parameters():
-                    p.grad /= num_iters
+                    if not p.requires_grad == False:
+                        p.grad /= num_iters
                 optimizer.step()
                 optimizer.zero_grad()
 
@@ -415,11 +416,11 @@ def train(cfg):
     optimizer = optim.construct_optimizer(model, cfg)
 
     # Load a checkpoint to resume training if applicable.
-    if not cfg.TRAIN.FINETUNE:
+    if not cfg.TRAIN.FINETUNE:      
       start_epoch = cu.load_train_checkpoint(cfg, model, optimizer)
     else:
       start_epoch = 0
-      cu.load_checkpoint(cfg.TRAIN.CHECKPOINT_FILE_PATH, model)
+      cu.load_checkpoint(cfg.TRAIN.CHECKPOINT_FILE_PATH, model, epoch_reset=True)
 
     # Create the video train and val loaders.
     train_loader = loader.construct_loader(cfg, "train")

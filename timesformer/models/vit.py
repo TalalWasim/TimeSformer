@@ -180,8 +180,9 @@ class VisionTransformer(nn.Module):
     """
     def __init__(self, img_size=224, patch_size=16, in_chans=3, num_classes=1000, embed_dim=768, depth=12,
                  num_heads=12, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop_rate=0., attn_drop_rate=0.,
-                 drop_path_rate=0.1, hybrid_backbone=None, norm_layer=nn.LayerNorm, num_frames=8, attention_type='divided_space_time', dropout=0.):
+                 drop_path_rate=0.1, hybrid_backbone=None, norm_layer=nn.LayerNorm, num_frames=8, attention_type='divided_space_time', dropout=0., eval_linear=False):
         super().__init__()
+        self.eval_linear = eval_linear
         self.attention_type = attention_type
         self.depth = depth
         self.dropout = nn.Dropout(dropout)
@@ -300,7 +301,12 @@ class VisionTransformer(nn.Module):
         return x[:, 0]
 
     def forward(self, x):
-        x = self.forward_features(x)
+        if self.eval_linear:
+            with torch.no_grad():
+                x = self.forward_features(x)
+        else:
+            x = self.forward_features(x)
+
         x = self.head(x)
         return x
 
@@ -321,7 +327,7 @@ class vit_base_patch16_224(nn.Module):
         super(vit_base_patch16_224, self).__init__()
         self.pretrained=True
         patch_size = 16
-        self.model = VisionTransformer(img_size=cfg.DATA.TRAIN_CROP_SIZE, num_classes=cfg.MODEL.NUM_CLASSES, patch_size=patch_size, embed_dim=768, depth=12, num_heads=12, mlp_ratio=4, qkv_bias=True, norm_layer=partial(nn.LayerNorm, eps=1e-6), drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1, num_frames=cfg.DATA.NUM_FRAMES, attention_type=cfg.TIMESFORMER.ATTENTION_TYPE, **kwargs)
+        self.model = VisionTransformer(img_size=cfg.DATA.TRAIN_CROP_SIZE, num_classes=cfg.MODEL.NUM_CLASSES, patch_size=patch_size, embed_dim=768, depth=12, num_heads=12, mlp_ratio=4, qkv_bias=True, norm_layer=partial(nn.LayerNorm, eps=1e-6), drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1, num_frames=cfg.DATA.NUM_FRAMES, attention_type=cfg.TIMESFORMER.ATTENTION_TYPE, eval_linear=cfg.TRAIN.LINEAR, **kwargs)
 
         self.attention_type = cfg.TIMESFORMER.ATTENTION_TYPE
         self.model.default_cfg = default_cfgs['vit_base_patch16_224']
@@ -329,6 +335,14 @@ class vit_base_patch16_224(nn.Module):
         pretrained_model=cfg.TIMESFORMER.PRETRAINED_MODEL
         if self.pretrained:
             load_pretrained(self.model, num_classes=self.model.num_classes, in_chans=kwargs.get('in_chans', 3), filter_fn=_conv_filter, img_size=cfg.DATA.TRAIN_CROP_SIZE, num_patches=self.num_patches, attention_type=self.attention_type, pretrained_model=pretrained_model)
+        
+        
+        if cfg.TRAIN.LINEAR:
+            for name, p in self.model.named_parameters():
+                if "head" in name:
+                    continue
+                else:
+                    p.requires_grad = False
 
     def forward(self, x):
         x = self.model(x)
