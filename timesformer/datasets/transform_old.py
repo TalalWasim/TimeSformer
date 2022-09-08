@@ -1,10 +1,9 @@
+# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
+
 import math
 import numpy as np
 import torch
-import torch.nn as nn
-from torch.nn.functional import conv2d
 
-from typing import Tuple
 
 def random_short_side_scale_jitter(
     images, min_size, max_size, boxes=None, inverse_uniform_sampling=False
@@ -63,19 +62,6 @@ def random_short_side_scale_jitter(
     )
 
 
-def resize(images, size, mode="bilinear"):
-    if isinstance(size, int):
-        new_height, new_width = size, size
-    else:
-        new_height, new_width = size
-    return torch.nn.functional.interpolate(
-        images,
-        size=(new_height, new_width),
-        mode=mode,
-        align_corners=False,
-    )
-
-
 def crop_boxes(boxes, x_offset, y_offset):
     """
     Peform crop on the bounding boxes given the offsets.
@@ -129,48 +115,6 @@ def random_crop(images, size, boxes=None):
     )
 
     return cropped, cropped_boxes
-
-
-def random_resized_crop(images, size, scale, ratio=(3. / 4., 4. / 3.), interpolation='bilinear'):
-    # to be implemented
-    height, width = images.shape[-2:]
-    area = height * width
-    non_central = False
-
-    for _ in range(10):
-        target_area = area * torch.empty(1).uniform_(scale[0], scale[1]).item()
-        log_ratio = torch.log(torch.tensor(ratio))
-        aspect_ratio = torch.exp(
-            torch.empty(1).uniform_(log_ratio[0], log_ratio[1])
-        ).item()
-
-        w = int(round(np.sqrt(target_area * aspect_ratio)))
-        h = int(round(np.sqrt(target_area / aspect_ratio)))
-
-        if 0 < w <= width and 0 < h <= height:
-            i = torch.randint(0, height - h + 1, size=(1,)).item()
-            j = torch.randint(0, width - w + 1, size=(1,)).item()
-            non_central = True
-
-    if not non_central:
-        # fallback to central crop
-        in_ratio = float(width) / float(height)
-        if in_ratio < min(ratio):
-            w = width
-            h = int(round(w / min(ratio)))
-        elif in_ratio > max(ratio):
-            h = height
-            w = int(round(h * max(ratio)))
-        else:  # whole image
-            w = width
-            h = height
-        i = (height - h) // 2
-        j = (width - w) // 2
-
-    y_offset, x_offset = i, j
-    cropped = images[:, :, y_offset: y_offset + h, x_offset: x_offset + w]
-    resized = resize(cropped, size=size, mode=interpolation)
-    return resized
 
 
 def horizontal_flip(prob, images, boxes=None):
@@ -307,7 +251,6 @@ def uniform_crop_2crops(images, size, spatial_idx, boxes=None):
 
     return cropped, cropped_boxes
 
-
 def clip_boxes_to_image(boxes, height, width):
     """
     Clip an array of boxes to an image with the given height and width.
@@ -358,7 +301,7 @@ def grayscale(images):
             `num frames` x `channel` x `height` x `width`.
     """
     # R -> 0.299, G -> 0.587, B -> 0.114.
-    img_gray = images.clone()
+    img_gray = torch.tensor(images)
     gray_channel = (
         0.299 * images[:, 2] + 0.587 * images[:, 1] + 0.114 * images[:, 0]
     )
@@ -514,241 +457,3 @@ def color_normalization(images, mean, stddev):
         out_images[:, idx] = (images[:, idx] - mean[idx]) / stddev[idx]
 
     return out_images
-
-
-def gaussian(window_size, sigma):
-    def gauss_fcn(x):
-        return -(x - window_size // 2)**2 / float(2 * sigma**2)
-    gauss = torch.stack(
-        [torch.exp(torch.tensor(gauss_fcn(x))) for x in range(window_size)])
-    return gauss / gauss.sum()
-
-
-def get_gaussian_kernel(ksize: int, sigma: float) -> torch.Tensor:
-    r"""Function that returns Gaussian filter coefficients.
-
-    Args:
-        ksize (int): filter size. It should be odd and positive.
-        sigma (float): gaussian standard deviation.
-
-    Returns:
-        Tensor: 1D tensor with gaussian filter coefficients.
-
-    Shape:
-        - Output: :math:`(ksize,)`
-    """
-    if not isinstance(ksize, int) or ksize % 2 == 0 or ksize <= 0:
-        raise TypeError("ksize must be an odd positive integer. Got {}"
-                        .format(ksize))
-    window_1d: torch.Tensor = gaussian(ksize, sigma)
-    return window_1d
-
-
-def get_gaussian_kernel2d(ksize: Tuple[int, int],
-                          sigma: Tuple[float, float]) -> torch.Tensor:
-    r"""Function that returns Gaussian filter matrix coefficients.
-
-    Args:
-        ksize (Tuple[int, int]): filter sizes in the x and y direction.
-         Sizes should be odd and positive.
-        sigma (Tuple[int, int]): gaussian standard deviation in the x and y
-         direction.
-
-    Returns:
-        Tensor: 2D tensor with gaussian filter matrix coefficients.
-
-    Shape:
-        - Output: :math:`(ksize_x, ksize_y)`
-    """
-    if not isinstance(ksize, tuple) or len(ksize) != 2:
-        raise TypeError("ksize must be a tuple of length two. Got {}"
-                        .format(ksize))
-    if not isinstance(sigma, tuple) or len(sigma) != 2:
-        raise TypeError("sigma must be a tuple of length two. Got {}"
-                        .format(sigma))
-    ksize_x, ksize_y = ksize
-    sigma_x, sigma_y = sigma
-    kernel_x: torch.Tensor = get_gaussian_kernel(ksize_x, sigma_x)
-    kernel_y: torch.Tensor = get_gaussian_kernel(ksize_y, sigma_y)
-    kernel_2d: torch.Tensor = torch.matmul(
-        kernel_x.unsqueeze(-1), kernel_y.unsqueeze(-1).t())
-    return kernel_2d
-
-
-class GaussianBlur(nn.Module):
-    r"""Creates an operator that blurs a tensor using a Gaussian filter.
-
-    The operator smooths the given tensor with a gaussian kernel by convolving
-    it to each channel. It suports batched operation.
-
-    Arguments:
-        kernel_size (Tuple[int, int]): the size of the kernel.
-        sigma (Tuple[float, float]): the standard deviation of the kernel.
-
-    Returns:
-        Tensor: the blurred tensor.
-
-    Shape:
-        - Input: :math:`(C, T, H, W)`
-        - Output: :math:`(C, T, H, W)`
-
-    Examples::
-
-        >>> input = torch.rand(2, 4, 5, 5)
-        >>> gauss = tgm.image.GaussianBlur((3, 3), (1.5, 1.5))
-        >>> output = gauss(input)  # 2x4x5x5
-    """
-
-    def __init__(self, kernel_size: Tuple[int, int],
-                 sigma: Tuple[float, float]) -> None:
-        super(GaussianBlur, self).__init__()
-        self.kernel_size: Tuple[int, int] = kernel_size
-        self.sigma: Tuple[float, float] = sigma
-        self._padding: Tuple[int, int] = self.compute_zero_padding(kernel_size)
-        self.kernel: torch.Tensor = self.create_gaussian_kernel(
-            kernel_size, sigma)
-
-    @staticmethod
-    def create_gaussian_kernel(kernel_size, sigma) -> torch.Tensor:
-        """Returns a 2D Gaussian kernel array."""
-        kernel: torch.Tensor = get_gaussian_kernel2d(kernel_size, sigma)
-        return kernel
-
-    @staticmethod
-    def compute_zero_padding(kernel_size: Tuple[int, int]) -> Tuple[int, int]:
-        """Computes zero padding tuple."""
-        computed = [(k - 1) // 2 for k in kernel_size]
-        return computed[0], computed[1]
-
-    def forward(self, x: torch.Tensor):
-        if not torch.is_tensor(x):
-            raise TypeError("Input x type is not a torch.Tensor. Got {}"
-                            .format(type(x)))
-        if not len(x.shape) == 4:
-            raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
-                             .format(x.shape))
-        # prepare kernel
-        b, c, h, w = x.shape
-        tmp_kernel: torch.Tensor = self.kernel.to(x.device).to(x.dtype)
-        kernel: torch.Tensor = tmp_kernel.repeat(c, 1, 1, 1)
-
-        # convolve tensor with gaussian kernel
-        return conv2d(x, kernel, padding=self._padding, stride=1, groups=c)
-
-
-def undo_normalize(tensor, mean, std):
-    """
-    Normalize a given tensor by subtracting the mean and dividing the std.
-    Args:
-        tensor (tensor): tensor to normalize.
-        mean (tensor or list): mean value to subtract.
-        std (tensor or list): std to divide.
-    """
-    if type(mean) == list:
-        mean = torch.tensor(mean)
-    if type(std) == list:
-        std = torch.tensor(std)
-    tensor = tensor * std
-    tensor = tensor + mean
-
-    if tensor.dtype != torch.uint8:
-        tensor = tensor * 255.0
-        tensor = tensor.to(torch.uint8)
-
-    return tensor
-
-
-class VideoDataAugmentationDINO(object):
-    def __init__(self, global_crops_scale=(0.4, 1.0), local_crops_scale=(0.05, 0.4), local_crops_number=8):
-        self.global_crops_scale = global_crops_scale
-        self.local_crops_scale = local_crops_scale
-        self.local_crops_number = local_crops_number
-
-        self.gaussian_kernel = GaussianBlur((3, 3), (1.5, 1.5))
-
-    @staticmethod
-    def flip_and_color_jitter(frames):
-        frames, _ = horizontal_flip(prob=0.5, images=frames)
-        if np.random.uniform() < 0.8:
-            frames = color_jitter(frames, img_brightness=0.4, img_contrast=0.4, img_saturation=0.2)
-        if np.random.uniform() < 0.2:
-            frames = grayscale(frames)
-        return frames
-
-    @staticmethod
-    def normalize(frames):
-        frames = color_normalization(frames, mean=[0.485, 0.456, 0.406], stddev=[0.229, 0.224, 0.225])
-        return frames
-
-    def gaussian_blur(self, frames):
-        # import kornia  # add this to top if using
-        # return self.gaussian_kernel(frames)  # negligible improvement
-        return frames
-
-    @staticmethod
-    def solarization(frames):
-        # import kornia  # add this to top if using
-        # return kornia.enhance.solarize(frames)  # negligible improvement
-        return frames
-
-    def no_aug(self, frames):
-        frames = resize(frames, size=224, mode="bicubic")
-        frames = self.normalize(frames)
-        return frames
-
-    # first global crop
-    def global_transform1(self, frames):
-        frames = random_resized_crop(frames, size=224, scale=self.global_crops_scale, interpolation="bicubic")
-        frames = self.flip_and_color_jitter(frames)
-        frames = self.gaussian_blur(frames)
-        frames = self.normalize(frames)
-        return frames
-
-    # second global crop
-    def global_transform2(self, frames):
-        frames = random_resized_crop(frames, size=224, scale=self.global_crops_scale, interpolation="bicubic")
-        frames = self.flip_and_color_jitter(frames)
-        if np.random.uniform() < 0.1:
-            frames = self.gaussian_blur(frames)
-        if np.random.uniform() < 0.2:
-            frames = self.solarization(frames)
-        frames = self.normalize(frames)
-        return frames
-
-    # transformation for the local small crops
-    def local_transform(self, frames): 
-        frames = random_resized_crop(frames, size=96, scale=self.local_crops_scale, interpolation="bicubic")
-        frames = self.flip_and_color_jitter(frames)
-        if np.random.uniform() < 0.5:
-            frames = self.gaussian_blur(frames)
-        frames = self.normalize(frames)
-
-        return frames
-    
-    def mask_transform(self, frames): 
-        frames = random_resized_crop(frames, size=224, scale=self.global_crops_scale, interpolation="bicubic")
-        frames = self.flip_and_color_jitter(frames)
-        if np.random.uniform() < 0.5:
-            frames = self.gaussian_blur(frames)
-        frames = self.normalize(frames)
-
-        return frames
-
-    def __call__(self, image, from_list=False, no_aug=False, two_token=False):
-        if two_token:
-            image = [x.float() / 255.0 if x.dtype == torch.uint8 else x for x in image]
-            crops = [self.global_transform1(image[0]), self.no_aug(image[0]),
-                     self.local_transform(image[1]), self.local_transform(image[2]),
-                     self.no_aug(image[3]), self.no_aug(image[4])]
-        elif no_aug:
-            image = [x.float() / 255.0 if x.dtype == torch.uint8 else x for x in image]
-            crops = [self.no_aug(x) for x in image]
-        elif from_list:
-            image = [x.float() / 255.0 if x.dtype == torch.uint8 else x for x in image]
-            crops = [self.global_transform2(image[0]), self.local_transform(image[1])]
-        else:
-            if image.dtype == torch.uint8:
-                image = image.float()
-                image = image / 255.0
-            crops = [self.global_transform2(image[0]), self.local_transform(image[1])]
-        return crops

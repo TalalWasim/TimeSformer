@@ -314,10 +314,6 @@ def decode(
     end=None,
     duration=None,
     frames_length=None,
-    temporal_aug=False,
-    two_token=False,
-    rand_fr=False,
-    tubelet_size=1,
 ):
     """
     Decode the video and perform temporal sampling.
@@ -341,9 +337,6 @@ def decode(
         max_spatial_scale (int): keep the aspect ratio and resize the frame so
             that shorter edge size is max_spatial_scale. Only used in
             `torchvision` backend.
-        temporal_aug: bool
-        two_token: bool
-        rand_fr: bool
     Returns:
         frames (tensor): decoded frames from the video.
     """
@@ -389,53 +382,11 @@ def decode(
 
     clip_sz = sampling_rate * num_frames / target_fps * fps
     start_idx, end_idx = get_start_end_idx(
-        video_size=frames.shape[0],
-        clip_size=clip_sz,
-        clip_idx=clip_idx if decode_all_video else 0,
-        num_clips=num_clips if decode_all_video else 1,
+        frames.shape[0],
+        clip_sz,
+        clip_idx if decode_all_video else 0,
+        num_clips if decode_all_video else 1,
     )
     # Perform temporal sampling from the decoded video.
-    if two_token:
-        max_len = frames.shape[0]
-        global_samples = []
-        for _ in range(3):
-            random_idx = random.randint(0, 6)
-            cur_global = temporal_sampling(frames, random_idx, max_len - random_idx, num_frames)
-            global_samples.append(cur_global)
-        local_samples = []
-        local_width = max_len // 8
-        for _ in range(2):
-            random_idx = random.randint(0, max_len - local_width - 1)
-            cur_local = temporal_sampling(frames, random_idx, random_idx + local_width, num_frames)
-            local_samples.append(cur_local)
-        frames = [*global_samples, *local_samples]
-    elif temporal_aug:
-        max_len = frames.shape[0]
-
-        if rand_fr:
-            global_1 = temporal_sampling(frames, 5, max_len, 8*tubelet_size)
-            local_samples = []
-            local_width = max_len // 8
-            num_local_frames = [64*tubelet_size]
-
-            for l_idx in range(1):
-                random_idx = random.randint(0, max_len - local_width - 1)
-                cur_local = temporal_sampling(frames, random_idx, random_idx + local_width, num_local_frames[l_idx])
-                local_samples.append(cur_local)
-        else:
-            num_global_frames = num_frames
-            num_local_frames = num_frames
-            global_1 = temporal_sampling(frames, 0, max_len - 5, num_global_frames)
-            global_2 = temporal_sampling(frames, 5, max_len, num_global_frames)
-            local_samples = []
-            local_width = max_len // 8
-            for _ in range(8):
-                random_idx = random.randint(0, max_len - local_width - 1)
-                cur_local = temporal_sampling(frames, random_idx, random_idx + local_width, num_local_frames)
-                local_samples.append(cur_local)
-
-        frames = [global_1, *local_samples]
-
-    else:
-        frames = temporal_sampling(frames, start_idx, end_idx, num_frames)  # frames.shape = (T, H, W, C)
+    frames = temporal_sampling(frames, start_idx, end_idx, num_frames)
     return frames

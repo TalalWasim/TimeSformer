@@ -26,4 +26,3 @@ DATA.PATH_TO_DATA_DIR $DATA_PATH \
 TRAIN.CHECKPOINT_FILE_PATH $CHECKPOINT \
 TRAIN.FINETUNE True \
 OUTPUT_DIR './results/svt_masked_30_separate_local_mae_vmae_finetune_kinetics'
-

@@ -238,6 +238,23 @@ _C.MODEL.HEAD_ACT = "softmax"
 # Patch Embed Tubelet Size
 _C.MODEL.TUBELET_SIZE = 1
 
+# Extras from SVT
+# Second model
+_C.MODEL.TWO_STREAM = False
+_C.MODEL.TWO_TOKEN = False
+_C.MODEL.CNN_DISTILL = False
+
+# Masking/Dropping
+_C.MODEL.MASKED = False
+_C.MODEL.DROPPED = False
+_C.MODEL.NO_DECODER = False
+_C.MODEL.LOCAL_MASK = False
+_C.MODEL.REPEAT_MASK = 1
+_C.MODEL.MASK_WEIGHT = 1
+_C.MODEL.JOINT_MASK_CROP = False
+_C.MODEL.JOINT_MASK_ONLY = False
+_C.MODEL.MASK_PERCENTAGE = 0.8
+
 
 # -----------------------------------------------------------------------------
 # SlowFast options
@@ -341,6 +358,16 @@ _C.DATA.ENSEMBLE_METHOD = "sum"
 
 # If True, revert the default input channel (RBG <-> BGR).
 _C.DATA.REVERSE_INPUT_CHANNEL = False
+
+
+# Extras from SVT
+# If True, use flow in dataset.
+_C.DATA.USE_FLOW = False
+_C.DATA.NO_FLOW_AUG = False
+_C.DATA.NO_RGB_AUG = False
+_C.DATA.RAND_CONV = False
+_C.DATA.NO_SPATIAL = False
+_C.DATA.RAND_FR = False
 
 ############
 _C.DATA.TEMPORAL_EXTENT = 8

@@ -11,7 +11,7 @@ from torch.utils.data.sampler import RandomSampler
 
 from timesformer.datasets.multigrid_helper import ShortCycleBatchSampler
 
-from . import data_utils as utils
+from . import utils as utils
 from .build import build_dataset
 
 
