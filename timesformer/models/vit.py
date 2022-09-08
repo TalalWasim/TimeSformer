@@ -175,12 +175,39 @@ class PatchEmbed(nn.Module):
         return x, T, W
 
 
+class VideoPatchEmbed3D(nn.Module):
+    """ Image to Patch Embedding
+    """
+    def __init__(self, img_size=224, patch_size=16, in_chans=3, embed_dim=768, num_frames=16, tubelet_size=2):
+        super().__init__()
+        img_size = to_2tuple(img_size)
+        patch_size = to_2tuple(patch_size)
+        self.tubelet_size = int(tubelet_size)
+        num_patches = (img_size[1] // patch_size[1]) * (img_size[0] // patch_size[0]) * (num_frames // self.tubelet_size)
+        self.img_size = img_size
+        self.patch_size = patch_size
+        self.num_patches = num_patches
+        self.proj = nn.Conv3d(in_channels=in_chans, out_channels=embed_dim, 
+                            kernel_size = (self.tubelet_size, patch_size[0], patch_size[1]), 
+                            stride=(self.tubelet_size, patch_size[0], patch_size[1]))
+
+    def forward(self, x, **kwargs):
+        B, C, T, H, W = x.shape
+        # FIXME look at relaxing size constraints
+        # assert H == self.img_size[0] and W == self.img_size[1], \
+        #     f"Input image size ({H}*{W}) doesn't match model ({self.img_size[0]}*{self.img_size[1]})."
+        x = self.proj(x).flatten(2).transpose(1, 2)
+        x = rearrange(x, 'b (t n) m -> (b t) n m', b=B, t=T//self.tubelet_size)
+        return x, T//self.tubelet_size, W//self.patch_size[0]
+
+
 class VisionTransformer(nn.Module):
     """ Vision Transformere
     """
     def __init__(self, img_size=224, patch_size=16, in_chans=3, num_classes=1000, embed_dim=768, depth=12,
                  num_heads=12, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop_rate=0., attn_drop_rate=0.,
-                 drop_path_rate=0.1, hybrid_backbone=None, norm_layer=nn.LayerNorm, num_frames=8, attention_type='divided_space_time', dropout=0., eval_linear=False):
+                 drop_path_rate=0.1, hybrid_backbone=None, norm_layer=nn.LayerNorm, num_frames=8,
+                 attention_type='divided_space_time', dropout=0., eval_linear=False, tubelet_size=1):
         super().__init__()
         self.eval_linear = eval_linear
         self.attention_type = attention_type
@@ -188,24 +215,30 @@ class VisionTransformer(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.num_classes = num_classes
         self.num_features = self.embed_dim = embed_dim  # num_features for consistency with other models
-        self.patch_embed = PatchEmbed(
-            img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim)
-        num_patches = self.patch_embed.num_patches
+        self.tubelet_size = tubelet_size
+        
+        if tubelet_size>1:
+            self.patch_embed = VideoPatchEmbed3D(img_size=img_size, patch_size=patch_size, in_chans=in_chans,
+                                                embed_dim=embed_dim, num_frames=num_frames, tubelet_size=tubelet_size)
+            self.num_patches = self.patch_embed.num_patches // (num_frames//tubelet_size)
+        else:
+            self.patch_embed = PatchEmbed(img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim)
+            self.num_patches = self.patch_embed.num_patches
 
         ## Positional Embeddings
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
-        self.pos_embed = nn.Parameter(torch.zeros(1, num_patches+1, embed_dim))
+        self.pos_embed = nn.Parameter(torch.zeros(1, self.num_patches+1, embed_dim))
         self.pos_drop = nn.Dropout(p=drop_rate)
         if self.attention_type != 'space_only':
-            self.time_embed = nn.Parameter(torch.zeros(1, num_frames, embed_dim))
+            self.time_embed = nn.Parameter(torch.zeros(1, num_frames//tubelet_size, embed_dim))
             self.time_drop = nn.Dropout(p=drop_rate)
 
         ## Attention Blocks
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, self.depth)]  # stochastic depth decay rule
         self.blocks = nn.ModuleList([
-            Block(
-                dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
-                drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, attention_type=self.attention_type)
+            Block(dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias,
+                    qk_scale=qk_scale, drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], 
+                    norm_layer=norm_layer, attention_type=self.attention_type)
             for i in range(self.depth)])
         self.norm = norm_layer(embed_dim)
 
@@ -310,14 +343,17 @@ class VisionTransformer(nn.Module):
         x = self.head(x)
         return x
 
-def _conv_filter(state_dict, patch_size=16):
+def _conv_filter(state_dict, patch_size=16, tubelet_size=1):
     """ convert patch embedding weight from manual patchify + linear proj to conv"""
     out_dict = {}
     for k, v in state_dict.items():
         if 'patch_embed.proj.weight' in k:
             if v.shape[-1] != patch_size:
                 patch_size = v.shape[-1]
-            v = v.reshape((v.shape[0], 3, patch_size, patch_size))
+            if tubelet_size == 1:
+                v = v.reshape((v.shape[0], 3, patch_size, patch_size))
+            else:
+                v = v.reshape((v.shape[0], 3, tubelet_size, patch_size, patch_size))
         out_dict[k] = v
     return out_dict
 
@@ -325,16 +361,24 @@ def _conv_filter(state_dict, patch_size=16):
 class vit_base_patch16_224(nn.Module):
     def __init__(self, cfg, **kwargs):
         super(vit_base_patch16_224, self).__init__()
-        self.pretrained=True
+        self.pretrained=False
         patch_size = 16
-        self.model = VisionTransformer(img_size=cfg.DATA.TRAIN_CROP_SIZE, num_classes=cfg.MODEL.NUM_CLASSES, patch_size=patch_size, embed_dim=768, depth=12, num_heads=12, mlp_ratio=4, qkv_bias=True, norm_layer=partial(nn.LayerNorm, eps=1e-6), drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1, num_frames=cfg.DATA.NUM_FRAMES, attention_type=cfg.TIMESFORMER.ATTENTION_TYPE, eval_linear=cfg.TRAIN.LINEAR, **kwargs)
+        self.model = VisionTransformer(img_size=cfg.DATA.TRAIN_CROP_SIZE, num_classes=cfg.MODEL.NUM_CLASSES, patch_size=patch_size,
+                                        embed_dim=768, depth=12, num_heads=12, mlp_ratio=4, qkv_bias=True,
+                                        norm_layer=partial(nn.LayerNorm, eps=1e-6), drop_rate=0., attn_drop_rate=0.,
+                                        drop_path_rate=0.1, num_frames=cfg.DATA.NUM_FRAMES, attention_type=cfg.TIMESFORMER.ATTENTION_TYPE,
+                                        eval_linear=cfg.TRAIN.LINEAR, tubelet_size=cfg.MODEL.TUBELET_SIZE, **kwargs)
 
         self.attention_type = cfg.TIMESFORMER.ATTENTION_TYPE
         self.model.default_cfg = default_cfgs['vit_base_patch16_224']
-        self.num_patches = (cfg.DATA.TRAIN_CROP_SIZE // patch_size) * (cfg.DATA.TRAIN_CROP_SIZE // patch_size)
+        self.num_patches = self.model.num_patches
+
         pretrained_model=cfg.TIMESFORMER.PRETRAINED_MODEL
         if self.pretrained:
-            load_pretrained(self.model, num_classes=self.model.num_classes, in_chans=kwargs.get('in_chans', 3), filter_fn=_conv_filter, img_size=cfg.DATA.TRAIN_CROP_SIZE, num_patches=self.num_patches, attention_type=self.attention_type, pretrained_model=pretrained_model)
+            load_pretrained(self.model, num_classes=self.model.num_classes,
+                            in_chans=kwargs.get('in_chans', 3), filter_fn=_conv_filter,
+                            img_size=cfg.DATA.TRAIN_CROP_SIZE, num_patches=self.num_patches,
+                            attention_type=self.attention_type, pretrained_model=pretrained_model)
         
         
         if cfg.TRAIN.LINEAR:
@@ -344,22 +388,6 @@ class vit_base_patch16_224(nn.Module):
                 else:
                     p.requires_grad = False
 
-    def forward(self, x):
-        x = self.model(x)
-        return x
-
-@MODEL_REGISTRY.register()
-class TimeSformer(nn.Module):
-    def __init__(self, img_size=224, patch_size=16, num_classes=400, num_frames=8, attention_type='divided_space_time',  pretrained_model='', **kwargs):
-        super(TimeSformer, self).__init__()
-        self.pretrained=True
-        self.model = VisionTransformer(img_size=img_size, num_classes=num_classes, patch_size=patch_size, embed_dim=768, depth=12, num_heads=12, mlp_ratio=4, qkv_bias=True, norm_layer=partial(nn.LayerNorm, eps=1e-6), drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1, num_frames=num_frames, attention_type=attention_type, **kwargs)
-
-        self.attention_type = attention_type
-        self.model.default_cfg = default_cfgs['vit_base_patch'+str(patch_size)+'_224']
-        self.num_patches = (img_size // patch_size) * (img_size // patch_size)
-        if self.pretrained:
-            load_pretrained(self.model, num_classes=self.model.num_classes, in_chans=kwargs.get('in_chans', 3), filter_fn=_conv_filter, img_size=img_size, num_frames=num_frames, num_patches=self.num_patches, attention_type=self.attention_type, pretrained_model=pretrained_model)
     def forward(self, x):
         x = self.model(x)
         return x

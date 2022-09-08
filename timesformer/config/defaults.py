@@ -235,6 +235,9 @@ _C.MODEL.FC_INIT_STD = 0.01
 # Activation layer for the output head.
 _C.MODEL.HEAD_ACT = "softmax"
 
+# Patch Embed Tubelet Size
+_C.MODEL.TUBELET_SIZE = 1
+
 
 # -----------------------------------------------------------------------------
 # SlowFast options
